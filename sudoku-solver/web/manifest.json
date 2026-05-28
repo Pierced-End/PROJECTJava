@@ -1,0 +1,38 @@
+{
+  "background_color": "#c0a895",
+  "dir": "ltr",
+  "display": "fullscreen",
+  "name": "sudoku-solver.ngrok-free",
+  "orientation": "any",
+  "scope": "/",
+  "short_name": "Sudoku",
+  "start_url": "/sudoku_solver",
+  "theme_color": "#c0a895",
+  "icons": [
+    {
+      "src": "https://bronze-gloss-define.ngrok-free.dev/favicon.ico",
+      "type": "image/x-icon",
+      "isSquare": false,
+      "isPng": false,
+      "isWebp": false,
+      "isJpg": false,
+      "width": 0,
+      "is512x512": false,
+      "is256x256": false,
+      "is192x192": false
+    }
+  ],
+  "id": "Sudoku",
+  "description": "Sudoku game.",
+  "lang": "en",
+  "categories": [
+    "entertainment",
+    "games",
+    "kids",
+    "productivity"
+  ],
+  "display_override": [
+    "fullscreen",
+    "window-controls-overlay"
+  ]
+}

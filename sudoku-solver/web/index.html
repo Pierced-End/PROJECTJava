@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Sudoku">
+    <link rel="apple-touch-icon" href="icons/icon-192x192.png">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#5C4033">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>Sudoku Solver</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">🧩</div>
+            <h1>Sudoku Solver</h1>
+            <p class="subtitle">Algorithm X — Dancing Links</p>
+        </header>
+        
+        <div class="main-content centered" id="mainContent">
+            <div class="board-section" id="boardSection">
+                <div class="board-wrapper">
+                    <div class="sudoku-board" id="sudokuBoard"></div>
+                </div>
+                
+                <div class="controls">
+                    <button onclick="generatePuzzle()" class="btn btn-primary">🎲 New Puzzle</button>
+                    <button onclick="checkSolution()" class="btn btn-accent">✅ Check</button>
+                    <button onclick="showStepByStep()" class="btn btn-secondary">📋 Steps</button>
+                    <button onclick="clearBoard()" class="btn btn-outline">🗑️ Clear</button>
+                </div>
+                
+                <div class="message" id="message"></div>
+            </div>
+            
+            <div class="steps-section" id="stepsSection">
+                <div class="steps-panel" id="stepsPanel">
+                    <div class="steps-header">
+                        <h3>📝 Solution Steps</h3>
+                        <button onclick="closeSteps()" class="close-btn">✕</button>
+                    </div>
+                    <div class="steps-progress">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="progressFill"></div>
+                        </div>
+                        <span class="progress-text" id="progressText">0/0 steps</span>
+                    </div>
+                    <div class="steps-list" id="stepsList"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let currentPuzzle = [];
+        let originalPuzzle = [];
+        let currentSteps = [];
+        let currentStepIndex = -1;
+        let puzzleGenerated = false;
+        
+        function openPanel() {
+            document.getElementById('mainContent').classList.remove('centered');
+            document.getElementById('mainContent').classList.add('with-panel');
+            document.getElementById('stepsSection').classList.add('visible');
+        }
+        
+        function closePanel() {
+            document.getElementById('stepsSection').classList.remove('visible');
+            document.getElementById('mainContent').classList.remove('with-panel');
+            document.getElementById('mainContent').classList.add('centered');
+        }
+        
+        function createBoard() {
+            const board = document.getElementById('sudokuBoard');
+            board.innerHTML = '';
+            
+            for (let i = 0; i < 9; i++) {
+                for (let j = 0; j < 9; j++) {
+                    const cell = document.createElement('input');
+                    cell.type = 'number';
+                    cell.min = '1';
+                    cell.max = '9';
+                    cell.inputMode = 'numeric';
+                    cell.pattern = '[1-9]';
+                    cell.className = 'cell';
+                    cell.id = 'cell-' + i + '-' + j;
+                    cell.value = currentPuzzle[i]?.[j] || '';
+                    
+                    if (originalPuzzle[i]?.[j]) {
+                        cell.classList.add('given');
+                        cell.readOnly = true;
+                    }
+                    
+                    cell.addEventListener('input', function(e) {
+                        let value = e.target.value.replace(/[^1-9]/g, '');
+                        e.target.value = value ? value.charAt(0) : '';
+                    });
+                    
+                    board.appendChild(cell);
+                }
+            }
+        }
+        
+        function getBoardState() {
+            const board = [];
+            for (let i = 0; i < 9; i++) {
+                board[i] = [];
+                for (let j = 0; j < 9; j++) {
+                    const cell = document.getElementById('cell-' + i + '-' + j);
+                    board[i][j] = cell.value ? parseInt(cell.value) : 0;
+                }
+            }
+            return board;
+        }
+        
+        function showMessage(msg, type) {
+            type = type || 'success';
+            const messageEl = document.getElementById('message');
+            messageEl.textContent = msg;
+            messageEl.className = 'message ' + type;
+            messageEl.style.display = 'block';
+            setTimeout(function() { messageEl.style.display = 'none'; }, 4000);
+        }
+        
+        async function generatePuzzle() {
+            try {
+                showMessage('Generating new puzzle...', 'info');
+                const response = await fetch('/sudoku/api/generate', { method: 'POST' });
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    currentPuzzle = data.puzzle.map(function(row) { return row.slice(); });
+                    originalPuzzle = data.puzzle.map(function(row) { return row.slice(); });
+                    currentSteps = [];
+                    currentStepIndex = -1;
+                    puzzleGenerated = true;
+                    createBoard();
+                    closePanel();
+                    showMessage('✨ New puzzle generated!');
+                }
+            } catch (error) {
+                showMessage('Error generating puzzle.', 'error');
+            }
+        }
+        
+        async function checkSolution() {
+            if (!puzzleGenerated) {
+                showMessage('⚠️ Generate a puzzle first!', 'error');
+                return;
+            }
+            
+            const userBoard = getBoardState();
+            
+            let hasEmpty = false;
+            for (let i = 0; i < 9; i++) {
+                for (let j = 0; j < 9; j++) {
+                    if (userBoard[i][j] === 0) { hasEmpty = true; break; }
+                }
+                if (hasEmpty) break;
+            }
+            
+            if (hasEmpty) {
+                showMessage('⚠️ Please fill in all cells first!', 'error');
+                return;
+            }
+            
+            try {
+                showMessage('Checking your solution...', 'info');
+                const response = await fetch('/sudoku/api/solve', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ puzzle: userBoard })
+                });
+                const data = await response.json();
+                
+                if (data.solved) {
+                    let isCorrect = true;
+                    for (let i = 0; i < 9; i++) {
+                        for (let j = 0; j < 9; j++) {
+                            if (userBoard[i][j] !== data.solution[i][j]) {
+                                isCorrect = false;
+                                const cell = document.getElementById('cell-' + i + '-' + j);
+                                if (cell && !originalPuzzle[i][j]) {
+                                    cell.style.background = '#FADBD8';
+                                    setTimeout(function() { cell.style.background = ''; }, 3000);
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (isCorrect) {
+                        showMessage('🎉 Congratulations! Your solution is correct!', 'success');
+                    } else {
+                        showMessage('❌ Some numbers are incorrect.', 'error');
+                    }
+                }
+            } catch (error) {
+                showMessage('Error checking solution.', 'error');
+            }
+        }
+        
+        async function showStepByStep() {
+            if (!puzzleGenerated) {
+                showMessage('⚠️ Generate a puzzle first!', 'error');
+                return;
+            }
+            
+            if (!currentSteps || currentSteps.length === 0) {
+                const puzzle = originalPuzzle.map(function(row) { return row.slice(); });
+                
+                try {
+                    showMessage('Calculating solution steps...', 'info');
+                    const response = await fetch('/sudoku/api/solve', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ puzzle: puzzle })
+                    });
+                    const data = await response.json();
+                    
+                    if (data.solved) {
+                        currentSteps = data.steps.filter(function(step) {
+                            return !originalPuzzle[step[0]][step[1]];
+                        });
+                        currentPuzzle = puzzle.map(function(row) { return row.slice(); });
+                        createBoard();
+                    } else {
+                        showMessage('Cannot generate steps.', 'error');
+                        return;
+                    }
+                } catch (error) {
+                    showMessage('Error generating steps.', 'error');
+                    return;
+                }
+            }
+            
+            currentStepIndex = -1;
+            currentPuzzle = originalPuzzle.map(function(row) { return row.slice(); });
+            createBoard();
+            openPanel();
+            displayStepByStep();
+        }
+        
+        function displayStepByStep() {
+            const list = document.getElementById('stepsList');
+            list.innerHTML = '';
+            
+            if (currentSteps.length === 0) {
+                list.innerHTML = '<div class="no-steps">No steps needed!</div>';
+                return;
+            }
+            
+            currentSteps.forEach(function(step, index) {
+                const stepDiv = document.createElement('div');
+                stepDiv.className = 'step-item';
+                stepDiv.id = 'step-' + index;
+                stepDiv.innerHTML = '<span class="step-number">' + (index + 1) + '.</span>' +
+                    '<span class="step-detail">Place <strong>' + step[2] + '</strong> at Row ' + (step[0] + 1) + ', Col ' + (step[1] + 1) + '</span>' +
+                    '<span class="step-action">Apply</span>';
+                stepDiv.addEventListener('click', function() { applyStep(index); });
+                list.appendChild(stepDiv);
+            });
+            
+            updateProgress(0);
+        }
+        
+        function applyStep(index) {
+            if (index < 0 || index >= currentSteps.length) return;
+            
+            const step = currentSteps[index];
+            const cell = document.getElementById('cell-' + step[0] + '-' + step[1]);
+            
+            if (cell && !originalPuzzle[step[0]]?.[step[1]]) {
+                cell.value = step[2];
+                cell.classList.add('solution-highlight');
+                setTimeout(function() { cell.classList.remove('solution-highlight'); }, 2000);
+                
+                currentStepIndex = index;
+                updateProgress(index + 1);
+                
+                document.querySelectorAll('.step-item').forEach(function(item, i) {
+                    if (i === index) {
+                        item.classList.add('active-step');
+                        item.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    } else if (i < index) {
+                        item.style.opacity = '0.5';
+                    } else {
+                        item.classList.remove('active-step');
+                        item.style.opacity = '1';
+                    }
+                });
+            }
+        }
+        
+        function updateProgress(current) {
+            const total = currentSteps.length;
+            const percentage = total > 0 ? (current / total) * 100 : 0;
+            document.getElementById('progressFill').style.width = percentage + '%';
+            document.getElementById('progressText').textContent = current + '/' + total + ' steps';
+        }
+        
+        function closeSteps() {
+            closePanel();
+            if (originalPuzzle.length > 0) {
+                currentPuzzle = originalPuzzle.map(function(row) { return row.slice(); });
+                createBoard();
+            }
+        }
+        
+        function clearBoard() {
+            if (puzzleGenerated && originalPuzzle.length > 0) {
+                currentPuzzle = originalPuzzle.map(function(row) { return row.slice(); });
+                createBoard();
+                showMessage('🧹 Board reset.');
+            } else {
+                currentPuzzle = Array(9).fill().map(function() { return Array(9).fill(0); });
+                originalPuzzle = Array(9).fill().map(function() { return Array(9).fill(0); });
+                puzzleGenerated = false;
+                createBoard();
+                showMessage('🧹 Board cleared.');
+            }
+            currentSteps = [];
+            currentStepIndex = -1;
+            closePanel();
+        }
+        
+        window.onload = function() {
+            currentPuzzle = Array(9).fill().map(function() { return Array(9).fill(0); });
+            originalPuzzle = Array(9).fill().map(function() { return Array(9).fill(0); });
+            puzzleGenerated = false;
+            createBoard();
+            closePanel();
+            showMessage('👋 Welcome! Click New Puzzle to start.', 'info');
+        };
+    </script>
+    
+    <!-- PWA Install & Service Worker -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+                navigator.serviceWorker.register('/sudoku/service-worker.js')
+                    .then(function(reg) { console.log('SW registered'); })
+                    .catch(function(err) { console.log('SW failed:', err); });
+            });
+        }
+        
+        let deferredPrompt;
+        window.addEventListener('beforeinstallprompt', function(e) {
+            e.preventDefault();
+            deferredPrompt = e;
+            
+            const btn = document.createElement('button');
+            btn.textContent = '📲 Install App';
+            btn.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:9999;padding:12px 20px;background:#8B7355;color:white;border:none;border-radius:25px;font-size:14px;font-weight:600;box-shadow:0 4px 20px rgba(0,0,0,0.4);cursor:pointer;animation:pulse 2s infinite;';
+            btn.onclick = async function() {
+                if (deferredPrompt) {
+                    deferredPrompt.prompt();
+                    const result = await deferredPrompt.userChoice;
+                    deferredPrompt = null;
+                    btn.remove();
+                }
+            };
+            document.body.appendChild(btn);
+            
+            setTimeout(function() { if (btn.parentNode) btn.remove(); }, 60000);
+        });
+    </script>
+    
+    <style>
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
+            50% { box-shadow: 0 4px 30px rgba(139,115,85,0.8); }
+        }
+    </style>
+</body>
+</html>
